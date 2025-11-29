@@ -302,7 +302,9 @@ module game_top (
         .seg_com(seg_com), .seg_data(seg_data)
     );
 
-    single_seven_segment_driver u_single_seg (
+    single_seven_segment_driver #(
+        .ACTIVE_LOW(1'b0) // Combo II single 7-seg is wired as active high
+    ) u_single_seg (
         .hex_value(stability), .dp_in(1'b0), .seg_out(seg_single_data)
     );
 
@@ -322,10 +324,11 @@ module game_top (
         .r_out(rgb_r_vec), .g_out(rgb_g_vec), .b_out(rgb_b_vec)
     );
     
-    assign f_led1 = {rgb_r_vec[0], rgb_g_vec[0], rgb_b_vec[0]};
-    assign f_led2 = {rgb_r_vec[1], rgb_g_vec[1], rgb_b_vec[1]};
-    assign f_led3 = {rgb_r_vec[2], rgb_g_vec[2], rgb_b_vec[2]};
-    assign f_led4 = {rgb_r_vec[3], rgb_g_vec[3], rgb_b_vec[3]};
+    // Front panel header is wired as B-R-G, remap so color_sel remains R-G-B internally
+    assign f_led1 = {rgb_b_vec[0], rgb_r_vec[0], rgb_g_vec[0]};
+    assign f_led2 = {rgb_b_vec[1], rgb_r_vec[1], rgb_g_vec[1]};
+    assign f_led3 = {rgb_b_vec[2], rgb_r_vec[2], rgb_g_vec[2]};
+    assign f_led4 = {rgb_b_vec[3], rgb_r_vec[3], rgb_g_vec[3]};
 
     assign piezo_out = ev1_piezo; 
     
