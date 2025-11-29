@@ -1,11 +1,11 @@
 // =======================================================================================
 // Module Name: phase1_puzzle1
-// Description: Phase 1 숫자 연산 퍼즐 (Mode Toggle Update)
+// Description: Phase 1 숫자 연산 퍼즐 (2-Mode Toggle Version)
 // Goal: 8개의 비트를 모두 1로 만들어라 (Display "11111111" -> Result 0xFF)
 // Update:
-//   1. Key *: 모드 순환 (Mode 0 -> Mode 1[Invert] -> Mode 2[Op Change] -> Mode 0)
-//   2. Key #: 기능 제거
-//   3. Mode Persistence: 숫자 키를 눌러도 모드가 유지됨 (연속 수정 가능)
+//   1. Default(Idle) Mode 제거
+//   2. Key *: 반전 모드 <-> 연산자 변경 모드 토글 (Toggle)
+//   3. 초기 상태: 반전 모드 (LED ON)
 // =======================================================================================
 
 module phase1_puzzle1 (
@@ -37,11 +37,10 @@ module phase1_puzzle1 (
     
     localparam TARGET_RESULT = 8'hFF;
 
-    // Puzzle State
-    // 0: Idle (No Edit)
-    // 1: Invert Mode (숫자 반전)
-    // 2: Op Change Mode (연산자 변경)
-    reg [1:0] edit_mode; 
+    // Puzzle Mode
+    // 0: Invert Mode (반전 모드) - 초기 상태
+    // 1: Op Change Mode (연산자 변경 모드)
+    reg edit_mode; 
     
     // Data Storage
     reg [7:0] nums [0:8]; 
@@ -57,8 +56,10 @@ module phase1_puzzle1 (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             clear <= 0; fail <= 0; correct <= 0;
+            
+            // 초기 모드: 반전 모드 (0)
             edit_mode <= 0; 
-            led_out <= 0;
+            led_out <= 8'hFF; // 반전 모드임으로 LED 켜기
             
             // Puzzle Initialization
             nums[0] <= 8'h12; nums[1] <= 8'h34; nums[2] <= 8'h56; 
@@ -79,47 +80,38 @@ module phase1_puzzle1 (
                         end else begin
                             fail <= 1; 
                         end
-                        // 제출 시 모드 초기화
-                        edit_mode <= 0; led_out <= 0;
+                        // 제출 후 반전 모드(0)로 초기화 (안전장치)
+                        edit_mode <= 0; 
+                        led_out <= 8'hFF;
                     end
                     
                     // --- Mode Toggle (Key *) ---
                     KEY_STAR: begin
-                        if (edit_mode == 0) begin
-                            // Mode 1: Invert Mode (LED ON)
-                            edit_mode <= 1; 
-                            led_out <= 8'hFF; 
-                        end else if (edit_mode == 1) begin
-                            // Mode 2: Op Change Mode (LED OFF - 요청사항 반영)
-                            edit_mode <= 2; 
-                            led_out <= 8'h00; 
-                        end else begin
-                            // Back to Mode 0: Idle
-                            edit_mode <= 0; 
-                            led_out <= 8'h00;
-                        end
+                        // 0(반전) <-> 1(연산자) 토글
+                        edit_mode <= ~edit_mode;
+                        
+                        // 현재가 0이면 1로 가니까 LED 끄기, 1이면 0으로 가니까 LED 켜기
+                        if (edit_mode == 0) led_out <= 8'h00; // To Op Mode
+                        else                led_out <= 8'hFF; // To Invert Mode
                     end
                     
-                    // --- Function Removed (Key #) ---
+                    // --- Key #: 기능 없음 ---
                     KEY_HASH: begin
-                        // 아무 기능 없음
                     end
                     
                     // --- Number Keys (1~8) ---
                     default: begin
                         if (key_value >= 1 && key_value <= 8) begin
-                            if (edit_mode == 1) begin
-                                // Mode 1: 숫자 비트 반전
+                            if (edit_mode == 0) begin
+                                // Mode 0: 숫자 비트 반전 (Invert)
                                 nums[key_value - 1] <= ~nums[key_value - 1];
-                                // 모드 유지 (연속 입력 가능)
                             end 
-                            else if (edit_mode == 2) begin
-                                // Mode 2: 연산자 순환 (AND -> OR -> XOR -> AND...)
+                            else begin
+                                // Mode 1: 연산자 순환 (Op Change)
                                 if (ops[key_value - 1] == OP_XOR) 
                                     ops[key_value - 1] <= OP_AND;
                                 else 
                                     ops[key_value - 1] <= ops[key_value - 1] + 1;
-                                // 모드 유지 (연속 입력 가능)
                             end
                         end
                     end
@@ -152,7 +144,6 @@ module phase1_puzzle1 (
     // ==========================================
     always @(*) begin
         if (enable) begin
-            // 8비트 결과를 8개의 7-세그먼트 자리에 펼쳐서 표시 (MSB -> LSB)
             seg_data = {
                 3'd0, calc_result[7], 
                 3'd0, calc_result[6],
