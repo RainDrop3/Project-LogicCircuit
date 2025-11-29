@@ -1,17 +1,14 @@
 // =======================================================================================
 // Module Name: game_top
 // Description: FPGA Bomb Defusal Game - Top Level Module
-// Changes:
-//   1. Added Random Event Generator (Auto trigger in Phase 1,3,4).
-//   2. Changed Event 2 Solution Key to KEY # (Index 11).
-//   3. Added Logic to disable Puzzles when Event is active (Mutual Exclusion).
+// Update: 
+//   - Main Action (P1, P2, P3): Key 0 (Rolled back)
+//   - Phase 4 Action (Mash): Key 1 (Changed)
 // =======================================================================================
 
 module game_top (
     input wire clk,             // 50MHz System Clock
     
-    // ?? Reset ??? -> Key 9 ??
-
     // =============================================================
     // 1. Physical Inputs
     // =============================================================
@@ -31,8 +28,8 @@ module game_top (
     output wire [7:0] lcd_data,
     output wire servo_pwm,        
     output wire [3:0] step_motor_phase, 
-    output wire adc_cs_n, adc_sclk, adc_din,         
-    output wire piezo_out        
+    output wire piezo_out,
+    output wire adc_cs_n, adc_sclk, adc_din         
 );
 
     // =================================================================
@@ -41,17 +38,21 @@ module game_top (
     
     // --- Reset Logic ---
     wire sys_rst; 
-    assign sys_rst = ~keypad_in[8]; // Key 9 (Active High Reset)
+    assign sys_rst = keypad_in[8]; // Key 9 is System Reset
 
     // --- Keypad Signals ---
     wire [3:0] key_val;        
     wire key_pulse;            
     
-    // Key 0: Main Action (Submit, Click)
+    // [롤백] Key 0: Main Action (Phase 1, 2, 3 Submit)
     wire btn_main_action;
     assign btn_main_action = key_pulse && (key_val == 4'd0);
     
-    // [NEW] Key #: Event 2 Solution Button (Index 11)
+    // [신규] Key 1: Phase 4 Action (Gauge Charge)
+    wire btn_p4_action;
+    assign btn_p4_action = key_pulse && (key_val == 4'd1);
+    
+    // Key #: Event 2 Solution Button
     wire btn_event_action;
     assign btn_event_action = key_pulse && (key_val == 4'd11);
 
@@ -60,7 +61,7 @@ module game_top (
     wire [11:0] adc_dial_val;  
     wire [11:0] adc_cds_val;   
 
-    // --- System Control ---
+    // --- System Control Signals ---
     wire [2:0] current_state;  
     wire [3:0] stability;      
     wire game_enable;          
@@ -79,14 +80,14 @@ module game_top (
     assign p_fail_sig = p1_fail | p2_fail | p3_fail;
     assign e_fail_sig = ev1_fail | ev2_fail;
     
-    wire p_correct_sig;                             
-    wire ev1_active, ev2_active; 
+    wire p_correct_sig;
     
-    // [NEW] Event Status Flag (1 if any event is running)
+    // Event Status
+    wire ev1_active, ev2_active; 
     wire is_event_running;
     assign is_event_running = ev1_active | ev2_active;
     
-    // [NEW] Auto Trigger Signals
+    // Auto Trigger Signals
     wire auto_trig_ev1, auto_trig_ev2;
     
     // --- Display Registers ---
@@ -97,10 +98,9 @@ module game_top (
     reg [127:0] lcd_line1; 
     reg [127:0] lcd_line2;
     
-    // --- Sub-module Outputs ---
+    // --- Sub-module Output Wires ---
     wire [7:0] p1_led, p2_led, p3_led;
-    wire [31:0] p1_seg, p2_seg, p4_seg;
-    wire [31:0] p3_seg; 
+    wire [31:0] p1_seg, p2_seg, p3_seg, p4_seg;
     wire [7:0] p2_servo, ev1_servo, ev2_servo;
     wire p4_motor_pulse; 
     wire ev1_piezo;
@@ -128,10 +128,9 @@ module game_top (
 
 
     // =================================================================
-    // 5. Control Logic
+    // 5. Control Logic & Game System
     // =================================================================
     
-    // [NEW] Random Event Generator
     random_event_generator u_rand_gen (
         .clk(clk), .rst_n(~sys_rst),
         .current_state(current_state),
@@ -158,42 +157,59 @@ module game_top (
 
 
     // =================================================================
-    // 6. Puzzles (Disabled when Event is Running)
+    // 6. Puzzles
     // =================================================================
     
+    // Phase 1: Arithmetic Puzzle (Uses Key 0 for Submit internally)
     phase1_puzzle1 u_puzzle1 (
         .clk(clk), .rst_n(~sys_rst), 
-        // [??] ??? ??? ?? ?? -> ? ?? ??
         .enable((current_state == 3'd1) && !is_event_running),
         .dip_sw(dip_sync), .key_valid(key_pulse), .key_value(key_val),
+        .timer_data(time_bcd),
         .led_out(p1_led), .seg_data(p1_seg), .clear(p1_clear), 
         .fail(p1_fail), 
         .correct(p_correct_sig)
     );
 
+    // Phase 2: Safe Dial (Uses Key 0)
     phase1_puzzle2_dial u_puzzle2 (
         .clk(clk), .rst_n(~sys_rst), 
         .enable((current_state == 3'd2) && !is_event_running),
-        .adc_dial_val(adc_dial_val), .btn_click(btn_main_action),     
+        .adc_dial_val(adc_dial_val), 
+        
+        // [유지] Phase 2는 Key 0 사용
+        .btn_click(btn_main_action),     
+        
         .target_seg_data(p2_seg), .cursor_led(p2_led), .servo_angle(p2_servo),
         .clear(p2_clear), 
         .fail(p2_fail) 
     );
     
+    // Phase 3: Lights Out (Uses Key 0)
     phase1_puzzle3 u_puzzle3 (
         .clk(clk), .rst_n(~sys_rst), 
         .enable((current_state == 3'd3) && !is_event_running),
-        .dip_sw(dip_sync), .btn_submit(btn_main_action), .timer_data(time_bcd),    
+        .dip_sw(dip_sync), 
+        
+        // [유지] Phase 3는 Key 0 사용
+        .btn_submit(btn_main_action), 
+        
+        .timer_data(time_bcd),    
         .seg_data(p3_seg), .led_out(p3_led), .clear(p3_clear), 
         .fail(p3_fail) 
     );
 
+    // Phase 4: Final Action (Uses Key 1)
     phase1_final_click u_puzzle4 (
         .clk(clk), .rst_n(~sys_rst), 
         .enable((current_state == 3'd4) && !is_event_running),
-        .btn_click(btn_main_action),     
+        
+        // [수정] Phase 4는 Key 1 (btn_p4_action) 사용
+        .btn_click(btn_p4_action),     
+        
         .seg_display(p4_seg), .motor_pulse(p4_motor_pulse), .clear(p4_clear)
     );
+
 
     // =================================================================
     // 7. Events
@@ -201,7 +217,7 @@ module game_top (
 
     event1_overload u_event1 (
         .clk(clk), .rst_n(~sys_rst), 
-        .event_start(auto_trig_ev1), // Connected to Random Gen
+        .event_start(auto_trig_ev1), 
         .cds_value(adc_cds_val),
         .servo_angle(ev1_servo), .piezo_warn(ev1_piezo),
         .event_success(), 
@@ -211,8 +227,7 @@ module game_top (
 
     event2_danger u_event2 (
         .clk(clk), .rst_n(~sys_rst), 
-        .event_start(auto_trig_ev2), // Connected to Random Gen
-        // [??] ??? ?? ??? Key 0(btn_main_action) -> Key #(btn_event_action)?? ??
+        .event_start(auto_trig_ev2), 
         .btn_pressed(btn_event_action), 
         .servo_angle(ev2_servo), .rgb_led(ev2_rgb),
         .event_success(), 
@@ -225,12 +240,12 @@ module game_top (
     // 8. Resource Multiplexing & Display Logic
     // =================================================================
 
-    // 1. 7-Segment MUX (8-Array)
+    // 1. 7-Segment MUX
     always @(*) begin
         case (current_state)
             3'd1: seg_display_data = p1_seg; 
             3'd2: seg_display_data = p2_seg;
-            3'd3: seg_display_data = {16'hFFFF, 16'hCAFE}; 
+            3'd3: seg_display_data = p3_seg; 
             3'd4: seg_display_data = p4_seg;
             3'd5: seg_display_data = 32'h8888_8888; // SUCCESS
             3'd6: seg_display_data = 32'hDEAD_DEAD; // FAIL
@@ -248,7 +263,7 @@ module game_top (
         endcase
     end
     
-    // 3. Servo & RGB MUX
+    // 3. Servo Motor MUX
     always @(*) begin
         if (ev1_active)      servo_target_angle = ev1_servo;
         else if (ev2_active) servo_target_angle = ev2_servo;
@@ -256,7 +271,7 @@ module game_top (
         else servo_target_angle = 8'd90;
     end
 
-    // RGB LED Logic
+    // 4. RGB LED Logic
     always @(*) begin
         if (ev2_active) 
             rgb_target_color = ev2_rgb;
@@ -264,7 +279,7 @@ module game_top (
             rgb_target_color = 3'b000;
     end
 
-    // 4. Text LCD Message Logic
+    // 5. Text LCD Message Logic
     reg [127:0] lcd_timer_str;
     always @(*) begin
         lcd_timer_str = {
@@ -303,7 +318,7 @@ module game_top (
     );
 
     single_seven_segment_driver #(
-        .ACTIVE_LOW(1'b0) // Combo II single 7-seg is wired as active high
+        .ACTIVE_LOW(1'b0)
     ) u_single_seg (
         .hex_value(stability), .dp_in(1'b0), .seg_out(seg_single_data)
     );
@@ -324,7 +339,6 @@ module game_top (
         .r_out(rgb_r_vec), .g_out(rgb_g_vec), .b_out(rgb_b_vec)
     );
     
-    // Front panel header is wired as B-R-G, remap so color_sel remains R-G-B internally
     assign f_led1 = {rgb_b_vec[0], rgb_r_vec[0], rgb_g_vec[0]};
     assign f_led2 = {rgb_b_vec[1], rgb_r_vec[1], rgb_g_vec[1]};
     assign f_led3 = {rgb_b_vec[2], rgb_r_vec[2], rgb_g_vec[2]};
