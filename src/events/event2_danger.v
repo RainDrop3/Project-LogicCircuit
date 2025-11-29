@@ -11,11 +11,15 @@ module event2_danger (
 );
     parameter SWEEP_SPEED = 200_000; 
     parameter TIME_LIMIT = 250_000_000; 
-    localparam RED_ZONE_MAX = 8'd60;
-    localparam YEL_ZONE_MAX = 8'd120;
-    localparam COLOR_RED = 3'b100;
-    localparam COLOR_YEL = 3'b010;  // 노란 구간 표시 대신 초록색을 사용
-    localparam COLOR_GRN = 3'b110;  // 성공 구간 표시를 노란색으로 교체
+    localparam SERVO_MAX   = 8'd180;
+    localparam GRN_WIDTH   = 8'd20;   // 초록 구간 크기
+    localparam YEL_MARGIN  = 8'd20;   // 초록 좌우 노랑 폭
+    localparam BASE_MIN    = YEL_MARGIN;
+    localparam BASE_MAX    = SERVO_MAX - GRN_WIDTH - YEL_MARGIN;
+    localparam RAND_SPAN   = BASE_MAX - BASE_MIN + 1;
+    localparam COLOR_RED = 3'b100;  // RGB
+    localparam COLOR_YEL = 3'b110;
+    localparam COLOR_GRN = 3'b010;
     localparam COLOR_OFF = 3'b000;
     localparam IDLE   = 2'b00;
     localparam SCAN   = 2'b01; 
@@ -25,6 +29,18 @@ module event2_danger (
     reg [31:0] move_cnt;
     reg [31:0] timer_cnt;
     reg direction;
+    reg [7:0] rand_state;
+    reg [7:0] green_start, green_end;
+    reg [7:0] yel_low_start, yel_low_end;
+    reg [7:0] yel_high_start, yel_high_end;
+
+    wire [7:0] rand_next = {rand_state[6:0], rand_state[7] ^ rand_state[5] ^ rand_state[4] ^ rand_state[3]};
+    wire [7:0] next_green_start = BASE_MIN + (rand_next % RAND_SPAN);
+    wire [7:0] next_green_end   = next_green_start + GRN_WIDTH;
+    wire [7:0] next_yel_low_start  = (next_green_start >= YEL_MARGIN) ? (next_green_start - YEL_MARGIN) : 8'd0;
+    wire [7:0] next_yel_low_end    = next_green_start;
+    wire [7:0] next_yel_high_start = next_green_end;
+    wire [7:0] next_yel_high_end   = (next_green_end + YEL_MARGIN <= SERVO_MAX) ? (next_green_end + YEL_MARGIN) : SERVO_MAX;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -32,6 +48,13 @@ module event2_danger (
             servo_angle <= 0; rgb_led <= COLOR_OFF;
             event_success <= 0; event_fail <= 0; event_active <= 0;
             move_cnt <= 0; timer_cnt <= 0; direction <= 0;
+            rand_state <= 8'hA5;
+            green_start <= BASE_MIN;
+            green_end <= BASE_MIN + GRN_WIDTH;
+            yel_low_start <= (BASE_MIN >= YEL_MARGIN) ? (BASE_MIN - YEL_MARGIN) : 8'd0;
+            yel_low_end <= BASE_MIN;
+            yel_high_start <= BASE_MIN + GRN_WIDTH;
+            yel_high_end <= ((BASE_MIN + GRN_WIDTH + YEL_MARGIN) <= SERVO_MAX) ? (BASE_MIN + GRN_WIDTH + YEL_MARGIN) : SERVO_MAX;
         end else begin
             case (state)
                 IDLE: begin
@@ -42,6 +65,13 @@ module event2_danger (
                         event_active <= 1;
                         servo_angle <= 0;
                         direction <= 0;
+                        rand_state <= rand_next;
+                        green_start <= next_green_start;
+                        green_end <= next_green_end;
+                        yel_low_start <= next_yel_low_start;
+                        yel_low_end <= next_yel_low_end;
+                        yel_high_start <= next_yel_high_start;
+                        yel_high_end <= next_yel_high_end;
                     end
                 end
                 SCAN: begin
@@ -57,15 +87,17 @@ module event2_danger (
                     end else begin
                         move_cnt <= move_cnt + 1;
                     end
-                    if (servo_angle < RED_ZONE_MAX)      rgb_led <= COLOR_RED;
-                    else if (servo_angle < YEL_ZONE_MAX) rgb_led <= COLOR_YEL;
-                    else                                 rgb_led <= COLOR_GRN;
+                    if (servo_angle < yel_low_start) rgb_led <= COLOR_RED;
+                    else if (servo_angle < yel_low_end) rgb_led <= COLOR_YEL;
+                    else if (servo_angle < green_end) rgb_led <= COLOR_GRN;
+                    else if (servo_angle < yel_high_end) rgb_led <= COLOR_YEL;
+                    else rgb_led <= COLOR_RED;
                     timer_cnt <= timer_cnt + 1;
                     if (timer_cnt >= TIME_LIMIT) begin
                         event_fail <= 1; 
                         state <= FINISH;
                     end else if (btn_pressed) begin
-                        if (servo_angle >= YEL_ZONE_MAX) event_success <= 1; 
+                        if ((servo_angle >= green_start) && (servo_angle < green_end)) event_success <= 1; 
                         else event_fail <= 1;
                         state <= FINISH;
                     end
