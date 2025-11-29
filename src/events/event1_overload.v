@@ -20,6 +20,7 @@ module event1_overload (
     // Parameters
     // CDS값은 보드 환경(밝기)에 따라 튜닝 필요. (어두울 때의 값 기준)
     parameter CDS_THRESHOLD = 12'd1000; 
+    parameter DROP_MARGIN   = 12'd350;   // 필요 가림 정도 (ADC 단계)
     parameter TIME_LIMIT_SEC = 3;
     parameter CLK_FREQ = 50_000_000;    
     
@@ -39,6 +40,8 @@ module event1_overload (
     reg [31:0] timer_cnt;
     reg [31:0] limit_cnt;
     reg [24:0] beep_cnt;
+    reg [11:0] ambient_level;
+    reg [11:0] dynamic_threshold;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -46,6 +49,7 @@ module event1_overload (
             timer_cnt <= 0; limit_cnt <= 0;
             event_success <= 0; event_fail <= 0; event_active <= 0;
             servo_angle <= IDLE_ANGLE; piezo_warn <= 0; beep_cnt <= 0;
+            ambient_level <= 0; dynamic_threshold <= CDS_THRESHOLD;
         end else begin
             case (state)
                 IDLE: begin
@@ -57,6 +61,8 @@ module event1_overload (
                         state <= WARNING;
                         event_active <= 1;
                         limit_cnt <= TIME_LIMIT_SEC * CLK_FREQ;
+                        ambient_level <= cds_value;
+                        dynamic_threshold <= (cds_value > DROP_MARGIN) ? (cds_value - DROP_MARGIN) : 12'd0;
                         
                         // [개선] 이벤트 시작과 동시에 삐- 소리 출력 (긴박감 조성)
                         piezo_warn <= 1; 
@@ -78,9 +84,8 @@ module event1_overload (
                     timer_cnt <= timer_cnt + 1;
                     
                     // --- Win/Loss Check ---
-                    // 주의: 보드 회로에 따라 어두울 때 ADC 값이 커질 수도 있음.
-                    // 현재는 (어두움 < Threshold) 로직 가정
-                    if (cds_value < CDS_THRESHOLD) begin
+                    // 환경에 따라 절대값이 크게 변해도, 시작 시점 대비 일정량 이상 낮아지면 성공으로 인정
+                    if ((cds_value <= CDS_THRESHOLD) || (cds_value <= dynamic_threshold)) begin
                         event_success <= 1; // 1 Cycle Pulse generated here
                         state <= RESULT;
                     end else if (timer_cnt >= limit_cnt) begin
