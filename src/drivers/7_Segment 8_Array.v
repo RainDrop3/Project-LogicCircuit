@@ -33,7 +33,6 @@ module seven_segment_array_driver (
     end
 
     // 2. Digit Selection (Common Signal) - Active Low (0 to Select)
-    // "8개의 Common 단자를 0으로 입력하고..." (이미지 참조)
     always @(*) begin
         case (digit_sel)
             3'd0: begin seg_com = 8'b11111110; hex_val = display_data[3:0];   dp_val = dot_point[0]; end
@@ -54,22 +53,26 @@ module seven_segment_array_driver (
     always @(*) begin
         case (hex_val)
             //                      abcdefgh
-            4'h0: seg_data = 8'b11111100; // 0xFC
-            4'h1: seg_data = 8'b01100000; // 0x60 (이미지 예시와 일치)
-            4'h2: seg_data = 8'b11011010; // 0xDA
-            4'h3: seg_data = 8'b11110010; // 0xF2
-            4'h4: seg_data = 8'b01100110; // 0x66
-            4'h5: seg_data = 8'b10110110; // 0xB6
-            4'h6: seg_data = 8'b10111110; // 0xBE
-            4'h7: seg_data = 8'b11100000; // 0xE0 (또는 0xE4)
-            4'h8: seg_data = 8'b11111110; // 0xFE
-            4'h9: seg_data = 8'b11110110; // 0xF6
-            4'hA: seg_data = 8'b11101110; // 0xEE
-            4'hB: seg_data = 8'b00111110; // 0x3E ('b')
-            4'hC: seg_data = 8'b10011100; // 0x9C ('C')
-            4'hD: seg_data = 8'b01111010; // 0x7A ('d')
-            4'hE: seg_data = 8'b10011110; // 0x9E ('E')
-            4'hF: seg_data = 8'b10001110; // 0x8E ('F') - Phase 1/3 필수
+            4'h0: seg_data = 8'b11111100; // 0xFC (0)
+            4'h1: seg_data = 8'b01100000; // 0x60 (1)
+            4'h2: seg_data = 8'b11011010; // 0xDA (2)
+            4'h3: seg_data = 8'b11110010; // 0xF2 (3)
+            4'h4: seg_data = 8'b01100110; // 0x66 (4)
+            4'h5: seg_data = 8'b10110110; // 0xB6 (5)
+            4'h6: seg_data = 8'b10111110; // 0xBE (6)
+            4'h7: seg_data = 8'b11100000; // 0xE0 (7)
+            4'h8: seg_data = 8'b11111110; // 0xFE (8)
+            4'h9: seg_data = 8'b11110110; // 0xF6 (9)
+            4'hA: seg_data = 8'b11101110; // 0xEE (A)
+            
+            // [수정] B를 언더바(_)로 변경
+            // d segment만 켬 (비트 4) -> 00010000
+            4'hB: seg_data = 8'b00010000; // 0x10 (_)
+            
+            4'hC: seg_data = 8'b10011100; // 0x9C (C)
+            4'hD: seg_data = 8'b01111010; // 0x7A (d)
+            4'hE: seg_data = 8'b10011110; // 0x9E (E)
+            4'hF: seg_data = 8'b10001110; // 0x8E (F)
             default: seg_data = 8'b00000000;
         endcase
         
