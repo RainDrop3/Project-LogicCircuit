@@ -54,14 +54,16 @@ module keypad_parallel_driver (
     endgenerate
 
     // ==========================================
-    // 2. Key Mapping (Corrected based on Test)
+    // 2. Key Mapping (Physical KEY1~KEY12 -> Value)
     // ==========================================
-    // [??? ?? ??]
-    // - 0? ?(??) -> 2? ??? (key_clean[1] -> 2) : key_clean[1]? '0'?? ??
-    // - 2? ?(??) -> ? ??(0) (key_clean[10] -> 0) : key_clean[10]? '2'? ??
-    // - # ?(??) -> 8? ??? (key_clean[7] -> 8) : key_clean[7]? '#'?? ??
-    // - 8? ?(??) -> #? ??? (key_clean[11] -> #) : key_clean[11]? '8'? ??
-    // (??? ??? ??? ?? ???? ??)
+    // Combo II-DLD keypad header exposes 12 dedicated lines:
+    //   [0]~[2] : digits 1,2,3
+    //   [3]~[5] : digits 4,5,6
+    //   [6]~[8] : digits 7,8,9 (KEY9 is reserved for async reset)
+    //   [9]     : '*'
+    //   [10]    : '0'
+    //   [11]    : '#'
+    // We only emit key_valid for inputs that participate in gameplay.
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -72,41 +74,32 @@ module keypad_parallel_driver (
             
             // Priority Encoder with FIXED Mapping
             
-            // [KEY 1] (??)
-            if (key_clean[0] && !key_prev[0]) begin key_value <= 4'd1; key_valid <= 1; end
-            
-            // [KEY 0] (Physical 0 -> Pin Index 1) - ??? 2???? ??
-            else if (key_clean[1] && !key_prev[1]) begin key_value <= 4'd0; key_valid <= 1; end
-            
-            // [KEY 3] (??)
-            else if (key_clean[2] && !key_prev[2]) begin key_value <= 4'd3; key_valid <= 1; end
-            
-            // [KEY 4] (??)
-            else if (key_clean[3] && !key_prev[3]) begin key_value <= 4'd4; key_valid <= 1; end
-            
-            // [KEY 5] (??)
-            else if (key_clean[4] && !key_prev[4]) begin key_value <= 4'd5; key_valid <= 1; end
-            
-            // [KEY 6] (??)
-            else if (key_clean[5] && !key_prev[5]) begin key_value <= 4'd6; key_valid <= 1; end
-            
-            // [KEY 7] (??)
-            else if (key_clean[6] && !key_prev[6]) begin key_value <= 4'd7; key_valid <= 1; end
-            
-            // [KEY #] (Physical # -> Pin Index 7) - ??? 8???? ??
-            else if (key_clean[7] && !key_prev[7]) begin key_value <= 4'd11; key_valid <= 1; end
-            
-            // [KEY 9 (Reset)] (Physical 9 -> Pin Index 8) - Ignored (Handled by rst_n)
-            // else if (key_clean[8] && !key_prev[8]) ...
-            
-            // [KEY *] (??)
-            else if (key_clean[9] && !key_prev[9]) begin key_value <= 4'd10; key_valid <= 1; end
-            
-            // [KEY 2] (Physical 2 -> Pin Index 10) - ??? 0???? ??
-            else if (key_clean[10] && !key_prev[10]) begin key_value <= 4'd2; key_valid <= 1; end
-            
-            // [KEY 8] (Physical 8 -> Pin Index 11) - ??? #???? ??
-            else if (key_clean[11] && !key_prev[11]) begin key_value <= 4'd8; key_valid <= 1; end
+            if (key_clean[0] && !key_prev[0]) begin
+                key_value <= 4'd1; key_valid <= 1;
+            end else if (key_clean[1] && !key_prev[1]) begin
+                key_value <= 4'd2; key_valid <= 1;
+            end else if (key_clean[2] && !key_prev[2]) begin
+                key_value <= 4'd3; key_valid <= 1;
+            end else if (key_clean[3] && !key_prev[3]) begin
+                key_value <= 4'd4; key_valid <= 1;
+            end else if (key_clean[4] && !key_prev[4]) begin
+                key_value <= 4'd5; key_valid <= 1;
+            end else if (key_clean[5] && !key_prev[5]) begin
+                key_value <= 4'd6; key_valid <= 1;
+            end else if (key_clean[6] && !key_prev[6]) begin
+                key_value <= 4'd7; key_valid <= 1;
+            end else if (key_clean[7] && !key_prev[7]) begin
+                key_value <= 4'd8; key_valid <= 1;
+            end
+
+            // Key 9 (index 8) is reserved for asynchronous reset logic in game_top.
+            else if (key_clean[9] && !key_prev[9]) begin
+                key_value <= 4'd10; key_valid <= 1; // '*'
+            end else if (key_clean[10] && !key_prev[10]) begin
+                key_value <= 4'd0; key_valid <= 1;  // '0'
+            end else if (key_clean[11] && !key_prev[11]) begin
+                key_value <= 4'd11; key_valid <= 1; // '#'
+            end
         end
     end
 endmodule
