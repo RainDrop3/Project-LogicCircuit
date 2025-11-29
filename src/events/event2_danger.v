@@ -14,8 +14,8 @@ module event2_danger (
     localparam RED_ZONE_MAX = 8'd60;
     localparam YEL_ZONE_MAX = 8'd120;
     localparam COLOR_RED = 3'b100;
-    localparam COLOR_YEL = 3'b110; 
-    localparam COLOR_GRN = 3'b010; 
+    localparam COLOR_YEL = 3'b010;  // 노란 구간 표시 대신 초록색을 사용
+    localparam COLOR_GRN = 3'b110;  // 성공 구간 표시를 노란색으로 교체
     localparam COLOR_OFF = 3'b000;
     localparam IDLE   = 2'b00;
     localparam SCAN   = 2'b01; 
