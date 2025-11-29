@@ -19,8 +19,7 @@ module event1_overload (
 );
     // Parameters
     // CDS값은 보드 환경(밝기)에 따라 튜닝 필요. (어두울 때의 값 기준)
-    parameter CDS_THRESHOLD = 12'd1000; 
-    parameter DROP_MARGIN   = 12'd350;   // 필요 가림 정도 (ADC 단계)
+    parameter DROP_MARGIN   = 12'd100;   // 이벤트 시작 대비 필수 조도 하락 폭
     parameter TIME_LIMIT_SEC = 3;
     parameter CLK_FREQ = 50_000_000;    
     
@@ -49,7 +48,7 @@ module event1_overload (
             timer_cnt <= 0; limit_cnt <= 0;
             event_success <= 0; event_fail <= 0; event_active <= 0;
             servo_angle <= IDLE_ANGLE; piezo_warn <= 0; beep_cnt <= 0;
-            ambient_level <= 0; dynamic_threshold <= CDS_THRESHOLD;
+            ambient_level <= 0; dynamic_threshold <= 0;
         end else begin
             case (state)
                 IDLE: begin
@@ -85,7 +84,7 @@ module event1_overload (
                     
                     // --- Win/Loss Check ---
                     // 환경에 따라 절대값이 크게 변해도, 시작 시점 대비 일정량 이상 낮아지면 성공으로 인정
-                    if ((cds_value <= CDS_THRESHOLD) || (cds_value <= dynamic_threshold)) begin
+                    if (cds_value <= dynamic_threshold) begin
                         event_success <= 1; // 1 Cycle Pulse generated here
                         state <= RESULT;
                     end else if (timer_cnt >= limit_cnt) begin
