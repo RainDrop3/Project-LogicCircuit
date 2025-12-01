@@ -58,8 +58,8 @@ module game_top (
 
     // --- Driver Outputs ---
     wire [7:0] dip_sync;       
-    wire [11:0] adc_dial_val;  
-    wire [11:0] adc_cds_val;   
+    wire [7:0] adc_dial_val;   
+    wire [7:0] adc_cds_val;   
 
     // --- System Control Signals ---
     wire [2:0] current_state;  

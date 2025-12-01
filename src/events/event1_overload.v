@@ -9,7 +9,7 @@ module event1_overload (
     input wire clk,
     input wire rst_n,
     input wire event_start,         // From Game Top (Random Trigger)
-    input wire [11:0] cds_value,    // From ADC (0~4095)
+    input wire [7:0] cds_value,     // From ADC (0~255)
     
     output reg [7:0] servo_angle,   // To Servo Driver (Override Phase 2)
     output reg piezo_warn,          // To Piezo Driver (Enable Signal)
@@ -19,7 +19,7 @@ module event1_overload (
 );
     // Parameters
     // CDS값은 보드 환경(밝기)에 따라 튜닝 필요. (어두울 때의 값 기준)
-    parameter DROP_MARGIN   = 12'd3;   // 이벤트 시작 대비 필수 조도 하락 폭
+    parameter DROP_MARGIN   = 8'd3;    // 이벤트 시작 대비 필수 조도 하락 폭
     parameter integer SERVO_STEP_PERIOD = 200_000; // 이벤트2와 동일한 서보 스텝 주기 (clk 사이클)
     
     parameter OVERLOAD_ANGLE = 8'd180; // 서보모터 튀어오름
@@ -37,8 +37,8 @@ module event1_overload (
     reg [1:0] state;
     reg [31:0] servo_step_cnt;       // 서보 각도 증가 주기를 세는 카운터
     reg [24:0] beep_cnt;
-    reg [11:0] ambient_level;        // 이벤트 시작 시점의 밝기 스냅샷
-    reg [11:0] live_cds_value;       // 이벤트 진행 중 실시간으로 들어오는 밝기 값
+    reg [7:0] ambient_level;         // 이벤트 시작 시점의 밝기 스냅샷
+    reg [7:0] live_cds_value;        // 이벤트 진행 중 실시간으로 들어오는 밝기 값
 
     wire drop_success;
     wire servo_reach_next;

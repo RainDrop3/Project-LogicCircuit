@@ -13,7 +13,7 @@ module phase1_puzzle2_dial (
     input wire clk,
     input wire rst_n,
     input wire enable,
-    input wire [11:0] adc_dial_val, // 가변저항 입력
+    input wire [7:0] adc_dial_val,  // 가변저항 입력 (8-bit from ADC)
     input wire btn_click,           // 확인 버튼 (Key 0)
     
     output reg [31:0] target_seg_data, // [Target Position Map]
@@ -103,7 +103,7 @@ module phase1_puzzle2_dial (
     // Input Processing (ADC -> Position)
     // ==========================================
     always @(*) begin
-        current_pos = adc_dial_val[11:9];
+        current_pos = adc_dial_val[7:5]; // Use upper 3 bits to map 8 zones
         
         case (current_pos)
             3'd0: cursor_led = 8'b00000001;
