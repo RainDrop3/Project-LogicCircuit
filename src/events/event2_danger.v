@@ -12,8 +12,8 @@ module event2_danger (
     parameter SWEEP_SPEED = 200_000; 
     parameter TIME_LIMIT = 250_000_000; 
     localparam SERVO_MAX   = 8'd180;
-    localparam GRN_WIDTH   = 8'd30;   // 초록 구간 크기
-    localparam YEL_MARGIN  = 8'd30;   // 초록 좌우 노랑 폭
+    localparam GRN_WIDTH   = 8'd40;   // 초록 구간 크기
+    localparam YEL_MARGIN  = 8'd40;   // 초록 좌우 노랑 폭
     localparam BASE_MIN    = YEL_MARGIN;
     localparam BASE_MAX    = SERVO_MAX - GRN_WIDTH - YEL_MARGIN;
     localparam RAND_SPAN   = BASE_MAX - BASE_MIN + 1;
