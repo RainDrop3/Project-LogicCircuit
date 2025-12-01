@@ -109,50 +109,7 @@ module game_top (
     wire ev1_piezo;
     wire [2:0] ev2_rgb;
     wire [3:0] rgb_r_vec, rgb_g_vec, rgb_b_vec;
-        wire piezo_timer_beep;
 
-        // --- Piezo Timer Alert Parameters ---
-        localparam integer CLK_FREQ_HZ          = 50_000_000;
-        localparam integer PIEZO_ON_TICKS       = CLK_FREQ_HZ / 2;   // 0.5s
-        localparam integer PIEZO_PERIOD_LONG    = 5 * CLK_FREQ_HZ;   // 5s interval
-        localparam integer PIEZO_PERIOD_SHORT   = 2 * CLK_FREQ_HZ;   // 2s interval (<1min)
-
-        reg [31:0] piezo_period_cnt;
-        reg [31:0] piezo_active_cnt;
-        reg        piezo_timer_active;
-        wire       timer_under_one_min = (time_bcd[15:8] == 8'h00);
-        wire [31:0] piezo_period_target = timer_under_one_min ? PIEZO_PERIOD_SHORT : PIEZO_PERIOD_LONG;
-
-        always @(posedge clk or posedge sys_rst) begin
-            if (sys_rst) begin
-                piezo_period_cnt  <= 0;
-                piezo_active_cnt  <= 0;
-                piezo_timer_active <= 0;
-            end else begin
-                if (!game_enable) begin
-                    piezo_period_cnt  <= 0;
-                    piezo_active_cnt  <= 0;
-                    piezo_timer_active <= 0;
-                end else if (piezo_timer_active) begin
-                    if (piezo_active_cnt >= PIEZO_ON_TICKS) begin
-                        piezo_timer_active <= 0;
-                        piezo_active_cnt  <= 0;
-                    end else begin
-                        piezo_active_cnt <= piezo_active_cnt + 1;
-                    end
-                end else begin
-                    piezo_active_cnt <= 0;
-                    if (piezo_period_cnt >= piezo_period_target) begin
-                        piezo_timer_active <= 1;
-                        piezo_period_cnt  <= 0;
-                    end else begin
-                        piezo_period_cnt <= piezo_period_cnt + 1;
-                    end
-                end
-            end
-        end
-
-        assign piezo_timer_beep = piezo_timer_active;
 
     // =================================================================
     // 4. Driver Instantiation
@@ -390,7 +347,7 @@ module game_top (
     assign f_led3 = {rgb_b_vec[2], rgb_r_vec[2], rgb_g_vec[2]};
     assign f_led4 = {rgb_b_vec[3], rgb_r_vec[3], rgb_g_vec[3]};
 
-    assign piezo_out = ev1_piezo | piezo_timer_beep; 
+    assign piezo_out = ev1_piezo; 
     
     led_array_driver u_led_driver (
         .rst_n(~sys_rst), .led_data(led_display_data), .led_out(led_out)
