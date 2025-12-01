@@ -9,8 +9,6 @@ module main_fsm (
     input wire puzzle_fail,
     input wire event_fail,
     input wire puzzle_correct,
-    input wire debug_force,
-    input wire [2:0] debug_state,
 
     output reg [2:0] current_state,
     output reg [3:0] stability,
@@ -41,10 +39,7 @@ module main_fsm (
             current_state <= IDLE;
             p_fail_prev <= 0; e_fail_prev <= 0; p_corr_prev <= 0;
         end else begin
-            if (debug_force)
-                current_state <= debug_state;
-            else
-                current_state <= next_state;
+            current_state <= next_state;
             p_fail_prev <= puzzle_fail;
             e_fail_prev <= event_fail;
             p_corr_prev <= puzzle_correct;
