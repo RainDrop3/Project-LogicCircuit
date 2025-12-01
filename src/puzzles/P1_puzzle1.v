@@ -1,10 +1,10 @@
 // =======================================================================================
 // Module Name: phase1_puzzle1
-// Description: Phase 1 산술 연산 퍼즐 (Active High Fixed)
+// Description: Phase 1 산술 연산 퍼즐 (All OR Logic)
 // Goal: 8개의 숫자를 연산하여 1을 만들어라 (Display "11111111" -> Result 0xFF)
 // Update: 
-//   - DIP Switch 로직을 Active High(1=ON)로 변경하여 직관성 확보
-//   - 스위치를 내려야(0) 연산이 꺼짐.
+//   - 모든 연산자를 'OR'로 고정 (숫자 9개 전부 OR 연산)
+//   - DIP Switch Active High (1=ON) 로직 유지
 // =======================================================================================
 
 module phase1_puzzle1 (
@@ -26,10 +26,7 @@ module phase1_puzzle1 (
     // ==========================================
     // Parameters & State Definitions
     // ==========================================
-    localparam OP_AND = 2'd0;
-    localparam OP_OR  = 2'd1;
-    localparam OP_XOR = 2'd2;
-    
+    // [참고] 연산자가 OR로 고정되었으므로 OP 파라미터는 사용되지 않음
     localparam KEY_SUBMIT = 4'd0;  // Key 0
     localparam KEY_STAR   = 4'd10; // Key *
     localparam KEY_HASH   = 4'd11; // Key #
@@ -38,12 +35,12 @@ module phase1_puzzle1 (
 
     // Puzzle Mode
     // 0: Invert Mode (숫자 반전)
-    // 1: Op Change Mode (연산자 변경 모드)
+    // 1: Op Change Mode (기능 없음 - OR 고정)
     reg edit_mode; 
     
     // Data Storage
     reg [7:0] nums [0:8]; 
-    reg [1:0] ops  [0:7]; 
+    reg [1:0] ops  [0:7]; // [참고] 저장 공간은 유지하나 계산엔 쓰이지 않음
 
     // Calculation Variables
     reg [7:0] calc_result;
@@ -65,7 +62,8 @@ module phase1_puzzle1 (
             nums[3] <= 8'h78; nums[4] <= 8'h9A; nums[5] <= 8'hBC;
             nums[6] <= 8'hDE; nums[7] <= 8'hF0; nums[8] <= 8'hAA;
             
-            for (i=0; i<8; i=i+1) ops[i] <= OP_AND; 
+            // ops 초기화 (사용 안함)
+            for (i=0; i<8; i=i+1) ops[i] <= 0; 
             
         end else if (enable) begin
             clear <= 0; fail <= 0; correct <= 0;
@@ -91,7 +89,7 @@ module phase1_puzzle1 (
                     end
                     
                     KEY_HASH: begin
-                        // 예비용 (기능 없음)
+                        // 예비용
                     end
                     
                     // --- Number Keys (1~8) ---
@@ -100,12 +98,8 @@ module phase1_puzzle1 (
                             if (edit_mode == 0) begin
                                 nums[key_value - 1] <= ~nums[key_value - 1];
                             end 
-                            else begin
-                                if (ops[key_value - 1] == OP_XOR) 
-                                    ops[key_value - 1] <= OP_AND;
-                                else 
-                                    ops[key_value - 1] <= ops[key_value - 1] + 1;
-                            end
+                            // [참고] edit_mode == 1일 때 연산자 변경 로직이 있었으나,
+                            // 계산식이 OR로 고정되었으므로 아무 동작 안 함.
                         end
                     end
                 endcase
@@ -121,16 +115,10 @@ module phase1_puzzle1 (
     always @(*) begin
         calc_result = nums[0]; 
         for (i = 0; i < 8; i = i + 1) begin
-            // [수정] Active High 로직 적용 (dip_sw가 1일 때 연산 수행)
-            // 스위치를 올려야 해당 단계의 연산이 수행됩니다.
-            // 스위치를 내리면(0) 해당 단계는 무시하고 넘어갑니다.
+            // [요청 반영] 딥스위치가 켜져(1) 있으면 무조건 OR 연산 수행
+            // 9개의 숫자가 순차적으로 OR 연산됨
             if (dip_sw[i]) begin 
-                case (ops[i])
-                    OP_AND: calc_result = calc_result & nums[i+1];
-                    OP_OR : calc_result = calc_result | nums[i+1];
-                    OP_XOR: calc_result = calc_result ^ nums[i+1];
-                    default: calc_result = calc_result;
-                endcase
+                calc_result = calc_result | nums[i+1];
             end
         end
     end
@@ -139,9 +127,6 @@ module phase1_puzzle1 (
     // 3. Output Assignment (Binary Display)
     // ==========================================
     always @(*) begin
-        // 결과값의 각 비트를 7-Segment 각 자리에 0 또는 1로 표시
-        // 예: calc_result = 0x12 (00010010) -> [0][0][0][1][0][0][1][0] 표시
-        
         seg_data = {
             3'd0, calc_result[7], 
             3'd0, calc_result[6],
