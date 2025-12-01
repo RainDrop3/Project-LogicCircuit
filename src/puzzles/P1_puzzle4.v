@@ -79,11 +79,11 @@ module phase1_final_click (
         seg_display[15:8]  = 8'hFF;
 
         // 좌측 두 자리에 현재 카운트: [Tens][Ones]
-        seg_display[31:28] = current_bcd[7:4];
-        seg_display[27:24] = current_bcd[3:0];
+        seg_display[31:28] = current_bcd[3:0];
+        seg_display[27:24] = current_bcd[7:4];
 
         // 우측 두 자리에 목표 카운트: [Tens][Ones]
-        seg_display[7:4] = target_bcd[7:4];
-        seg_display[3:0] = target_bcd[3:0];
+        seg_display[7:4] = target_bcd[3:0];
+        seg_display[3:0] = target_bcd[7:4];
     end
 endmodule
