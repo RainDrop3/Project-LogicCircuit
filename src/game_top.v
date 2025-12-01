@@ -393,7 +393,7 @@ module game_top (
     assign piezo_out = ev1_piezo | piezo_timer_beep; 
     
     led_array_driver u_led_driver (
-        .rst_n(~sys_rst), .led_data(~led_display_data), .led_out(led_out)
+        .rst_n(~sys_rst), .led_data(led_display_data), .led_out(led_out)
     );
 
     text_lcd_driver u_lcd_driver (
