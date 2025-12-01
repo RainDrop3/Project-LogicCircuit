@@ -163,7 +163,7 @@ module game_top (
     // Phase 1: Arithmetic Puzzle (Uses Key 0 for Submit internally)
     phase1_puzzle1 u_puzzle1 (
         .clk(clk), .rst_n(~sys_rst), 
-        .enable((current_state == 3'd1) && !is_event_running),
+        .enable(current_state == 3'd1),
         .dip_sw(dip_sync), .key_valid(key_pulse), .key_value(key_val),
         .timer_data(time_bcd),
         .led_out(p1_led), .seg_data(p1_seg), .clear(p1_clear), 
@@ -174,7 +174,7 @@ module game_top (
     // Phase 2: Safe Dial (Uses Key 0)
     phase1_puzzle2_dial u_puzzle2 (
         .clk(clk), .rst_n(~sys_rst), 
-        .enable((current_state == 3'd2) && !is_event_running),
+        .enable(current_state == 3'd2),
         .adc_dial_val(adc_dial_val), 
         
         // [유지] Phase 2는 Key 0 사용
@@ -188,7 +188,7 @@ module game_top (
     // Phase 3: Lights Out (Uses Key 0)
     phase1_puzzle3 u_puzzle3 (
         .clk(clk), .rst_n(~sys_rst), 
-        .enable((current_state == 3'd3) && !is_event_running),
+        .enable(current_state == 3'd3),
         .dip_sw(dip_sync), 
         
         // [유지] Phase 3는 Key 0 사용
@@ -202,7 +202,7 @@ module game_top (
     // Phase 4: Final Action (Uses Key 1)
     phase1_final_click u_puzzle4 (
         .clk(clk), .rst_n(~sys_rst), 
-        .enable((current_state == 3'd4) && !is_event_running),
+        .enable(current_state == 3'd4),
         
         // [수정] Phase 4는 Key 1 (btn_p4_action) 사용
         .btn_click(btn_p4_action),     
