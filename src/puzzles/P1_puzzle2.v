@@ -1,9 +1,12 @@
 // =======================================================================================
 // Module Name: phase1_puzzle2_dial
-// Description: Phase 2 금고 다이얼 퍼즐 (Speed Aim Version)
-// Goal: 제한 시간 내에 제시된 랜덤 숫자 위치로 다이얼을 돌려라!
-// Display: [Time(sec)] [ _ _ O _ _ _ _ ]
-// Update: 빈 공간을 _(언더바)로 표시 (드라이버에서 0xB를 _로 처리)
+// Description: Phase 2 금고 다이얼 퍼즐 (Full Display & 3s Limit Version)
+// Goal: 3초 안에 랜덤 위치 조준!
+// Display: [ _ _ _ O _ _ _ _ ] (8자리 전체 사용)
+// Update:
+//   1. 제한 시간 5초 -> 3초 단축
+//   2. 7-Segment 전체(8자리)를 타겟 위치 표시용으로 사용 (타이머 표시 제거)
+//   3. 타겟 위치는 '0'(O), 나머지는 '_'(B)로 표시
 // =======================================================================================
 
 module phase1_puzzle2_dial (
@@ -13,7 +16,7 @@ module phase1_puzzle2_dial (
     input wire [11:0] adc_dial_val, // 가변저항 입력
     input wire btn_click,           // 확인 버튼 (Key 0)
     
-    output reg [31:0] target_seg_data, // [Time] ... [Target Position]
+    output reg [31:0] target_seg_data, // [Target Position Map]
     output reg [7:0] cursor_led,       // 현재 내 위치 (LED)
     output reg [7:0] servo_angle,      // 물리 피드백
     output reg clear,
@@ -23,7 +26,8 @@ module phase1_puzzle2_dial (
     // ==========================================
     // Parameters
     // ==========================================
-    parameter TIME_LIMIT_SEC = 5;       // 제한 시간 5초
+    // [수정] 제한 시간 3초로 단축
+    parameter TIME_LIMIT_SEC = 3;       
     parameter CLK_FREQ = 50_000_000;    
     parameter MAX_TICK = TIME_LIMIT_SEC * CLK_FREQ; 
 
@@ -38,7 +42,7 @@ module phase1_puzzle2_dial (
     reg [2:0] target_pos;   // 목표 위치 (0~7)
     reg [2:0] current_pos;  // 현재 위치 (0~7)
     
-    reg [31:0] timer_cnt;   // 카운트다운 타이머
+    reg [31:0] timer_cnt;   // 카운트다운 타이머 (내부 동작용)
     
     // LFSR for Random Generation
     reg [15:0] lfsr_reg;
@@ -80,6 +84,7 @@ module phase1_puzzle2_dial (
                                 end
                             end
                         end else begin
+                            // Time Over -> Fail & Restart
                             fail <= 1;
                             state <= S_INIT;
                         end
@@ -117,35 +122,25 @@ module phase1_puzzle2_dial (
 
     // ==========================================
     // 7-Segment Display Logic
-    // Format: [Time] [ _ _ O _ _ _ _ ]
+    // Format: [ _ _ _ O _ _ _ _ ] (8자리 전체 사용)
     // ==========================================
-    reg [3:0] sec_display;
-    
     always @(*) begin
-        if (timer_cnt > 0)
-            sec_display = (timer_cnt + CLK_FREQ - 1) / CLK_FREQ;
-        else
-            sec_display = 0;
-
         if (enable && state != S_DONE) begin
-            // 1. 전체를 언더바(_)로 채움. (드라이버에서 B -> _ 매핑)
-            target_seg_data[27:0] = {7{4'hB}}; 
+            // 1. 전체를 언더바(_)로 초기화 (드라이버에서 B -> _)
+            target_seg_data = {8{4'hB}}; 
             
-            // 2. 타겟 위치에 '0' (O 모양) 표시
-            // (Digit 7은 타이머 자리이므로 제외/겹침)
+            // 2. 타겟 위치에만 '0' (O 모양) 표시
+            // Digit 0 ~ 7 전체 사용 (타이머 표시 없음)
             case (target_pos)
-                3'd0: target_seg_data[3:0]   = 4'h0;
-                3'd1: target_seg_data[7:4]   = 4'h0;
-                3'd2: target_seg_data[11:8]  = 4'h0;
-                3'd3: target_seg_data[15:12] = 4'h0;
-                3'd4: target_seg_data[19:16] = 4'h0;
-                3'd5: target_seg_data[23:20] = 4'h0;
-                3'd6: target_seg_data[27:24] = 4'h0;
-                3'd7: ; // 7번 위치는 타이머 자리와 겹치므로 표시 생략 (난이도 요소)
+                3'd0: target_seg_data[3:0]   = 4'h0; // Digit 0 (Rightmost)
+                3'd1: target_seg_data[7:4]   = 4'h0; 
+                3'd2: target_seg_data[11:8]  = 4'h0; 
+                3'd3: target_seg_data[15:12] = 4'h0; 
+                3'd4: target_seg_data[19:16] = 4'h0; 
+                3'd5: target_seg_data[23:20] = 4'h0; 
+                3'd6: target_seg_data[27:24] = 4'h0; 
+                3'd7: target_seg_data[31:28] = 4'h0; // Digit 7 (Leftmost)
             endcase
-            
-            // 3. Digit 7에 타이머(초) 표시 (최우선)
-            target_seg_data[31:28] = sec_display[3:0];
             
         end else begin
             target_seg_data = 32'h00000000;
