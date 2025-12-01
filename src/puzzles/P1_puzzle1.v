@@ -1,11 +1,10 @@
 // =======================================================================================
 // Module Name: phase1_puzzle1
-// Description: Phase 1 숫자 연산 퍼즐 (2-Mode Toggle Version)
+// Description: Phase 1 숫자 연산 퍼즐 (DIP Polarity Fixed & Display Always On)
 // Goal: 8개의 비트를 모두 1로 만들어라 (Display "11111111" -> Result 0xFF)
-// Update:
-//   1. Default(Idle) Mode 제거
-//   2. Key *: 반전 모드 <-> 연산자 변경 모드 토글 (Toggle)
-//   3. 초기 상태: 반전 모드 (LED ON)
+// Fix: 
+//   1. DIP Switch Active Low 지원 (~dip_sw)
+//   2. [수정] 이벤트 발생 시에도 화면이 꺼지지 않도록 출력 로직에서 enable 조건 제거
 // =======================================================================================
 
 module phase1_puzzle1 (
@@ -38,7 +37,7 @@ module phase1_puzzle1 (
     localparam TARGET_RESULT = 8'hFF;
 
     // Puzzle Mode
-    // 0: Invert Mode (반전 모드) - 초기 상태
+    // 0: Invert Mode (반전 모드)
     // 1: Op Change Mode (연산자 변경 모드)
     reg edit_mode; 
     
@@ -59,9 +58,8 @@ module phase1_puzzle1 (
             
             // 초기 모드: 반전 모드 (0)
             edit_mode <= 0; 
-            led_out <= 8'hFF; // 반전 모드임으로 LED 켜기
+            led_out <= 8'hFF; 
             
-            // Puzzle Initialization
             nums[0] <= 8'h12; nums[1] <= 8'h34; nums[2] <= 8'h56; 
             nums[3] <= 8'h78; nums[4] <= 8'h9A; nums[5] <= 8'hBC;
             nums[6] <= 8'hDE; nums[7] <= 8'hF0; nums[8] <= 8'hAA;
@@ -80,22 +78,17 @@ module phase1_puzzle1 (
                         end else begin
                             fail <= 1; 
                         end
-                        // 제출 후 반전 모드(0)로 초기화 (안전장치)
                         edit_mode <= 0; 
                         led_out <= 8'hFF;
                     end
                     
                     // --- Mode Toggle (Key *) ---
                     KEY_STAR: begin
-                        // 0(반전) <-> 1(연산자) 토글
                         edit_mode <= ~edit_mode;
-                        
-                        // 현재가 0이면 1로 가니까 LED 끄기, 1이면 0으로 가니까 LED 켜기
-                        if (edit_mode == 0) led_out <= 8'h00; // To Op Mode
-                        else                led_out <= 8'hFF; // To Invert Mode
+                        if (edit_mode == 0) led_out <= 8'h00; 
+                        else                led_out <= 8'hFF; 
                     end
                     
-                    // --- Key #: 기능 없음 ---
                     KEY_HASH: begin
                     end
                     
@@ -103,11 +96,9 @@ module phase1_puzzle1 (
                     default: begin
                         if (key_value >= 1 && key_value <= 8) begin
                             if (edit_mode == 0) begin
-                                // Mode 0: 숫자 비트 반전 (Invert)
                                 nums[key_value - 1] <= ~nums[key_value - 1];
                             end 
                             else begin
-                                // Mode 1: 연산자 순환 (Op Change)
                                 if (ops[key_value - 1] == OP_XOR) 
                                     ops[key_value - 1] <= OP_AND;
                                 else 
@@ -128,7 +119,8 @@ module phase1_puzzle1 (
     always @(*) begin
         calc_result = nums[0]; 
         for (i = 0; i < 8; i = i + 1) begin
-            if (dip_sw[i]) begin
+            // Active Low 스위치 대응 (~dip_sw)
+            if (~dip_sw[i]) begin 
                 case (ops[i])
                     OP_AND: calc_result = calc_result & nums[i+1];
                     OP_OR : calc_result = calc_result | nums[i+1];
@@ -140,23 +132,22 @@ module phase1_puzzle1 (
     end
 
     // ==========================================
-    // 3. Output Assignment (Binary Display)
+    // 3. Output Assignment (Always On)
     // ==========================================
     always @(*) begin
-        if (enable) begin
-            seg_data = {
-                3'd0, calc_result[7], 
-                3'd0, calc_result[6],
-                3'd0, calc_result[5],
-                3'd0, calc_result[4],
-                3'd0, calc_result[3],
-                3'd0, calc_result[2],
-                3'd0, calc_result[1],
-                3'd0, calc_result[0]
-            };
-        end else begin
-            seg_data = 32'h00000000;
-        end
+        // [수정] if (enable) 조건을 제거하여 이벤트 중에도 화면이 나오게 함
+        // Top 모듈의 MUX가 Phase를 구분해주므로 안전함
+        
+        seg_data = {
+            3'd0, calc_result[7], 
+            3'd0, calc_result[6],
+            3'd0, calc_result[5],
+            3'd0, calc_result[4],
+            3'd0, calc_result[3],
+            3'd0, calc_result[2],
+            3'd0, calc_result[1],
+            3'd0, calc_result[0]
+        };
     end
 
 endmodule
