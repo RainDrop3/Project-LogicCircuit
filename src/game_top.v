@@ -46,9 +46,12 @@ module game_top (
     
     // [롤백] Key 0: Main Action (Phase 1, 2, 3 Submit)
     wire btn_main_action;
+        wire ev1_success, ev2_success;
+        wire stability_recover_sig;
+        assign stability_recover_sig = p_correct_sig | ev1_success | ev2_success;
     assign btn_main_action = key_pulse && (key_val == 4'd0);
     
-    // [신규] Key 1: Phase 4 Action (Gauge Charge)
+        wire ev1_active, ev2_active; 
     wire btn_p4_action;
     assign btn_p4_action = key_pulse && (key_val == 4'd1);
     
@@ -56,12 +59,29 @@ module game_top (
     wire btn_event_action;
     assign btn_event_action = key_pulse && (key_val == 4'd11);
 
+        // =================================================================
+        // [Debug Shortcut] Hold '*' and tap 1~4 to jump directly to each phase
+        //   - Keep this block together for easy commenting when shipping release builds.
+        // =================================================================
+        wire debug_star_hold;
+        wire debug_phase_force;
+        wire [2:0] debug_phase_state;
+
+        assign debug_star_hold = (keypad_in[9] == 1'b0); // Key '*' is active-low on bit 9
+        assign debug_phase_force = debug_star_hold && key_pulse &&
+                                   (key_val >= 4'd1) && (key_val <= 4'd4);
+        assign debug_phase_state = (key_val == 4'd1) ? 3'd1 :
+                                   (key_val == 4'd2) ? 3'd2 :
+                                   (key_val == 4'd3) ? 3'd3 :
+                                   (key_val == 4'd4) ? 3'd4 : 3'd0;
+
     // --- Driver Outputs ---
     wire [7:0] dip_sync;       
     wire [11:0] adc_dial_val;  
     wire [11:0] adc_cds_val;   
 
-    // --- System Control Signals ---
+            .puzzle_fail(p_fail_sig), .event_fail(e_fail_sig), .puzzle_correct(stability_recover_sig),
+            .debug_force(debug_phase_force), .debug_state(debug_phase_state),
     wire [2:0] current_state;  
     wire [3:0] stability;      
     wire game_enable;          
@@ -71,7 +91,7 @@ module game_top (
     wire time_out_sig;         
     wire [15:0] time_bcd;      
 
-    // --- Puzzle & Event Signals ---
+            .event_success(ev1_success), 
     wire p1_clear, p2_clear, p3_clear, p4_clear;
     wire p1_fail, p2_fail, p3_fail; 
     wire ev1_fail, ev2_fail;
@@ -81,7 +101,7 @@ module game_top (
     assign e_fail_sig = ev1_fail | ev2_fail;
     
     wire p_correct_sig;
-    wire ev1_success, ev2_success;
+            .event_success(ev2_success), 
     wire stability_recover_sig;
     assign stability_recover_sig = p_correct_sig | ev1_success | ev2_success;
     
