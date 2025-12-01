@@ -1,125 +1,153 @@
+// =======================================================================================
+// Module Name: adc_interface
+// Description: AD7908 (8-bit ADC) Control Interface for Combo II-DLD
+// Updated: Based on PDF manual (AD7908, 8-bit, 50kHz SPI)
+// =======================================================================================
+
 module adc_interface (
-    input wire clk,
+    input wire clk,             // 50MHz System Clock
     input wire rst_n,
-    input wire adc_data_in,      // MISO (SDO from ADC)
+    input wire adc_data_in,     // MISO (DOUT from ADC)
     
-    output reg adc_cs_n,         // Chip Select (Active Low)
-    output reg adc_sclk,         // Serial Clock (~1MHz)
-    output reg adc_din,          // MOSI (SDI to ADC - Command)
+    output reg adc_cs_n,        // Chip Select (Active Low)
+    output reg adc_sclk,        // Serial Clock (~50kHz)
+    output reg adc_din,         // MOSI (DIN to ADC)
     
-    output reg [11:0] dial_value, // Ch0 Value (Potentiometer) - Phase 2 Use
-    output reg [11:0] cds_value   // Ch1 Value (Light Sensor)  - Event 1 Use
+    // 호환성을 위해 12비트 출력 유지 (상위 8비트 유효, 하위 4비트 0)
+    output reg [11:0] dial_value, // Ch0 (Potentiometer)
+    output reg [11:0] cds_value   // Ch1 (CDS Sensor)
 );
 
-    // ==========================================
-    // State & Counter Definitions
-    // ==========================================
-    localparam IDLE  = 0;
-    localparam TRANS = 1; 
-    localparam DONE  = 2;
+    // =============================================================
+    // Parameters & Definitions
+    // =============================================================
+    // SCLK Frequency: 50kHz (PDF suggests low freq)
+    // 50MHz / 1000 = 50kHz -> Toggle every 500 cycles
+    parameter CLK_DIV = 500; 
 
-    reg [1:0] state;
-    reg [5:0] clk_cnt;      // 50MHz -> 1MHz divider
-    reg tick_rise;          // SCLK Rising Edge Pulse (Sample MISO)
-    reg tick_fall;          // SCLK Falling Edge Pulse (Drive MOSI)
+    // AD7908 Control Register Config (12-bit)
+    // WRITE(1) | SEQ(0) | DC(0) | ADD[2:0] | PM[1:0](11) | SHADOW(0) | WEAK(0) | RANGE(0) | CODING(1)
+    // Range=0 (0~Vref), Coding=1 (Binary)
+    // CH0 Config: 100 000 11 00 01 -> 0x831
+    // CH1 Config: 100 001 11 00 01 -> 0x871
+    localparam CMD_CH0 = 12'h831;
+    localparam CMD_CH1 = 12'h871;
 
-    reg [4:0] bit_cnt;      // 0~16 bits
-    reg [11:0] shift_reg;   // Data Buffer
-    reg channel_sel;        // 0: Ch0, 1: Ch1
+    // States
+    localparam S_IDLE       = 0;
+    localparam S_SETUP_CH0  = 1; // Send Config for CH0 (Initial)
+    localparam S_READ_CH0   = 2; // Read CH0 Data & Send Config for CH1
+    localparam S_READ_CH1   = 3; // Read CH1 Data & Send Config for CH0
 
-    // ==========================================
-    // 1. SCLK Generation & Edge Detection
-    // ==========================================
-    // Generate 1MHz SCLK from 50MHz (Toggle every 25 cycles)
+    reg [2:0] state;
+    reg [9:0] clk_cnt;
+    reg sclk_en;
+    reg [4:0] bit_cnt;       // 0~15 (16 clocks per cycle)
+    reg [15:0] shift_in;     // Input Buffer
+    reg [11:0] shift_out;    // Output Command Buffer
+
+    // =============================================================
+    // 1. SCLK Generation (50kHz)
+    // =============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             clk_cnt <= 0;
-            adc_sclk <= 0; // SPI Mode 0 (Idle Low)
-            tick_rise <= 0;
-            tick_fall <= 0;
+            adc_sclk <= 1; // Idle High (CPOL=1, CPHA=1 typical for AD7908)
+            sclk_en <= 0;  // Rising edge enable
         end else begin
-            tick_rise <= 0;
-            tick_fall <= 0;
-            
-            if (clk_cnt >= 24) begin // 25 cycles
+            sclk_en <= 0;
+            if (clk_cnt >= CLK_DIV - 1) begin
                 clk_cnt <= 0;
                 adc_sclk <= ~adc_sclk;
-                
-                // sclk가 0->1이 되려는 순간 (Rising Edge) -> 데이터 읽기
-                if (adc_sclk == 0) tick_rise <= 1;
-                // sclk가 1->0이 되려는 순간 (Falling Edge) -> 데이터 쓰기
-                else               tick_fall <= 1;
+                if (adc_sclk == 0) sclk_en <= 1; // Rising Edge of SCLK (Data Shift)
             end else begin
                 clk_cnt <= clk_cnt + 1;
             end
         end
     end
 
-    // ==========================================
-    // 2. Main FSM (SPI Protocol)
-    // ==========================================
+    // =============================================================
+    // 2. Main FSM (AD7908 SPI Protocol)
+    // =============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state <= IDLE;
+            state <= S_IDLE;
             adc_cs_n <= 1;
             adc_din <= 0;
             bit_cnt <= 0;
-            shift_reg <= 0;
-            channel_sel <= 0;
             dial_value <= 0;
             cds_value <= 0;
-        end else begin
+            shift_in <= 0;
+            shift_out <= 0;
+        end else if (sclk_en) begin // Run on SCLK Rising Edge
             case (state)
-                IDLE: begin
+                S_IDLE: begin
                     adc_cs_n <= 1;
-                    adc_din <= 0;
-                    bit_cnt <= 0;
-                    // tick_fall 타이밍에 맞춰 시작 (Setup 시간 확보)
-                    if (tick_fall) state <= TRANS; 
+                    state <= S_SETUP_CH0;
                 end
-                
-                TRANS: begin
-                    // --- Falling Edge: Master Drives MOSI ---
-                    if (tick_fall) begin
-                        adc_cs_n <= 0; // CS Active Low
-                        
-                        // MCP3202 Command: Start(1), SGL(1), Ch(sel), MSBF(1)
-                        case (bit_cnt)
-                            0: adc_din <= 1;           // Start Bit
-                            1: adc_din <= 1;           // SGL/DIFF (1=Single)
-                            2: adc_din <= channel_sel; // Channel Select
-                            3: adc_din <= 1;           // MSBF (1=MSB First)
-                            default: adc_din <= 0;
-                        endcase
+
+                // [Initial Step] CS Low, Send CH0 Config, Ignore Input
+                S_SETUP_CH0: begin
+                    adc_cs_n <= 0;
+                    // Output Logic (MOSI)
+                    if (bit_cnt < 12) adc_din <= CMD_CH0[11 - bit_cnt];
+                    else              adc_din <= 0; // Padding
+
+                    // Next State Logic
+                    if (bit_cnt == 15) begin
+                        bit_cnt <= 0;
+                        state <= S_READ_CH0; // Next: Read CH0, Write CH1
+                        adc_cs_n <= 1;       // CS Pulse High between frames
+                    end else begin
+                        bit_cnt <= bit_cnt + 1;
                     end
+                end
+
+                // [Loop A] Read CH0 Data, Write CH1 Config
+                S_READ_CH0: begin
+                    adc_cs_n <= 0;
                     
-                    // --- Rising Edge: Master Samples MISO ---
-                    if (tick_rise) begin
-                        // MCP3202 sends Null bit at bit 4, Data at 5~16
-                        if (bit_cnt >= 5 && bit_cnt <= 16) begin
-                            shift_reg <= {shift_reg[10:0], adc_data_in};
-                        end
+                    // MOSI: Send CH1 Config
+                    if (bit_cnt < 12) adc_din <= CMD_CH1[11 - bit_cnt];
+                    else              adc_din <= 0;
+
+                    // MISO: Shift In Data (Sample on Rising Edge)
+                    shift_in <= {shift_in[14:0], adc_data_in};
+
+                    if (bit_cnt == 15) begin
+                        bit_cnt <= 0;
+                        // AD7908 Data Format: 4 Zeros + 8 Data + 4 Zeros
+                        // shift_in[11:4] contains the 8-bit result
+                        // 12-bit 호환성을 위해: {8bit_data, 4'b0}
+                        dial_value <= {shift_in[11:4], 4'b0000}; 
                         
-                        // Cycle Control
-                        if (bit_cnt == 16) begin
-                            state <= DONE;
-                        end else begin
-                            bit_cnt <= bit_cnt + 1;
-                        end
+                        state <= S_READ_CH1;
+                        adc_cs_n <= 1; 
+                    end else begin
+                        bit_cnt <= bit_cnt + 1;
                     end
                 end
-                
-                DONE: begin
-                    if (tick_fall) begin
-                        adc_cs_n <= 1; // CS Disable
-                        adc_din <= 0;
+
+                // [Loop B] Read CH1 Data, Write CH0 Config
+                S_READ_CH1: begin
+                    adc_cs_n <= 0;
+                    
+                    // MOSI: Send CH0 Config
+                    if (bit_cnt < 12) adc_din <= CMD_CH0[11 - bit_cnt];
+                    else              adc_din <= 0;
+
+                    // MISO: Shift In Data
+                    shift_in <= {shift_in[14:0], adc_data_in};
+
+                    if (bit_cnt == 15) begin
+                        bit_cnt <= 0;
+                        // Save CH1 Data
+                        cds_value <= {shift_in[11:4], 4'b0000};
                         
-                        // 결과 저장 (채널별)
-                        if (channel_sel == 0) dial_value <= shift_reg;
-                        else                  cds_value  <= shift_reg;
-                        
-                        channel_sel <= ~channel_sel; // 다음 번엔 다른 채널 읽기
-                        state <= IDLE;
+                        state <= S_READ_CH0; // Go back to Read CH0
+                        adc_cs_n <= 1; 
+                    end else begin
+                        bit_cnt <= bit_cnt + 1;
                     end
                 end
             endcase
