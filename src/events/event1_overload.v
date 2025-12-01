@@ -19,7 +19,7 @@ module event1_overload (
 );
     // Parameters
     // CDS값은 보드 환경(밝기)에 따라 튜닝 필요. (어두울 때의 값 기준)
-    parameter DROP_MARGIN   = 12'd100;   // 이벤트 시작 대비 필수 조도 하락 폭
+    parameter DROP_MARGIN   = 12'd3;   // 이벤트 시작 대비 필수 조도 하락 폭
     parameter integer SERVO_STEP_PERIOD = 200_000; // 이벤트2와 동일한 서보 스텝 주기 (clk 사이클)
     
     parameter OVERLOAD_ANGLE = 8'd180; // 서보모터 튀어오름
