@@ -12,15 +12,16 @@ module event2_danger (
     parameter SWEEP_SPEED = 200_000; 
     parameter TIME_LIMIT = 250_000_000; 
     localparam SERVO_MAX   = 8'd180;
-    localparam GRN_WIDTH   = 8'd20;   // 초록 구간 크기
-    localparam YEL_MARGIN  = 8'd20;   // 초록 좌우 노랑 폭
+    localparam GRN_WIDTH   = 8'd30;   // 초록 구간 크기
+    localparam YEL_MARGIN  = 8'd30;   // 초록 좌우 노랑 폭
     localparam BASE_MIN    = YEL_MARGIN;
     localparam BASE_MAX    = SERVO_MAX - GRN_WIDTH - YEL_MARGIN;
     localparam RAND_SPAN   = BASE_MAX - BASE_MIN + 1;
-    localparam COLOR_RED = 3'b100;  // RGB
-    localparam COLOR_YEL = 3'b110;
-    localparam COLOR_GRN = 3'b010;
+    localparam COLOR_RED = 3'b110;  // RGB
+    localparam COLOR_YEL = 3'b010;
+    localparam COLOR_GRN = 3'b011;
     localparam COLOR_OFF = 3'b000;
+    // 110: 빨강 / 100: 보라 / 010: 노랑
     localparam IDLE   = 2'b00;
     localparam SCAN   = 2'b01; 
     localparam FINISH = 2'b10;
