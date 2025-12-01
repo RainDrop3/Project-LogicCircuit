@@ -81,6 +81,9 @@ module game_top (
     assign e_fail_sig = ev1_fail | ev2_fail;
     
     wire p_correct_sig;
+    wire ev1_success, ev2_success;
+    wire stability_recover_sig;
+    assign stability_recover_sig = p_correct_sig | ev1_success | ev2_success;
     
     // Event Status
     wire ev1_active, ev2_active; 
@@ -144,7 +147,7 @@ module game_top (
         .game_start_btn(btn_main_action),
         .phase_clear(p1_clear | p2_clear | p3_clear | p4_clear),
         .time_out(time_out_sig),
-        .puzzle_fail(p_fail_sig), .event_fail(e_fail_sig), .puzzle_correct(p_correct_sig),
+        .puzzle_fail(p_fail_sig), .event_fail(e_fail_sig), .puzzle_correct(stability_recover_sig),
         .current_state(current_state), .stability(stability), .game_enable(game_enable),
         .timer_reset(timer_reset_sig), .game_clear(game_clear_sig), .game_over(game_over_sig)
     );
@@ -220,7 +223,7 @@ module game_top (
         .event_start(auto_trig_ev1), 
         .cds_value(adc_cds_val),
         .servo_angle(ev1_servo), .piezo_warn(ev1_piezo),
-        .event_success(), 
+        .event_success(ev1_success), 
         .event_fail(ev1_fail), 
         .event_active(ev1_active)
     );
@@ -230,7 +233,7 @@ module game_top (
         .event_start(auto_trig_ev2), 
         .btn_pressed(btn_event_action), 
         .servo_angle(ev2_servo), .rgb_led(ev2_rgb),
-        .event_success(), 
+        .event_success(ev2_success), 
         .event_fail(ev2_fail), 
         .event_active(ev2_active)
     );
