@@ -70,9 +70,20 @@ module phase1_final_click (
     always @(*) begin
         current_bcd = bin2bcd(current_cnt);
         target_bcd = bin2bcd(target_cnt);
-        seg_display[31:24] = current_bcd[7:0];
-        seg_display[23:16] = {4'hF, 4'hF};
-        seg_display[15:8]  = {4'hF, 4'hF};
-        seg_display[7:0]   = target_bcd[7:0];
+
+        // 기본값은 모두 공백(0xF)으로 채우고 필요한 자리만 덮어씀
+        seg_display = 32'hFFFF_FFFF;
+
+        // 중앙 두 자리는 항상 공백 유지
+        seg_display[23:16] = 8'hFF;
+        seg_display[15:8]  = 8'hFF;
+
+        // 좌측 두 자리에 현재 카운트: [Tens][Ones]
+        seg_display[31:28] = current_bcd[7:4];
+        seg_display[27:24] = current_bcd[3:0];
+
+        // 우측 두 자리에 목표 카운트: [Tens][Ones]
+        seg_display[7:4] = target_bcd[7:4];
+        seg_display[3:0] = target_bcd[3:0];
     end
 endmodule
