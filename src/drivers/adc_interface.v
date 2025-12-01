@@ -15,42 +15,39 @@ module adc_interface (
     output reg [7:0] cds_value
 );
 
-    // =============================================================
-    // 1. SPI Clock Divider (Target 10kHz)
-    // =============================================================
-    // 50MHz / (2 * 2500) = 10kHz (toggle every 2500 cycles)
-    localparam integer CLK_DIV = 2500;
+    localparam integer CLK_DIV = 2500; // 50MHz -> 10kHz SCK
 
     reg [15:0] clk_cnt;
-    reg sck_rise_en;
-    reg sck_fall_en;
+    reg sck_enable_rise;
+    reg sck_enable_fall;
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            clk_cnt      <= 0;
-            adc_sclk     <= 0;
-            sck_rise_en  <= 0;
-            sck_fall_en  <= 0;
+    wire rst = ~rst_n;
+
+    // === Clock Divider (copied from friend reference) ===
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            clk_cnt <= 0;
+            adc_sclk <= 0;
+            sck_enable_rise <= 0;
+            sck_enable_fall <= 0;
         end else begin
-            sck_rise_en <= 0;
-            sck_fall_en <= 0;
+            sck_enable_rise <= 0;
+            sck_enable_fall <= 0;
             if (clk_cnt >= (CLK_DIV - 1)) begin
-                clk_cnt  <= 0;
+                clk_cnt <= 0;
                 adc_sclk <= ~adc_sclk;
-                if (adc_sclk == 0) sck_rise_en <= 1; // about to rise
-                else               sck_fall_en <= 1; // about to fall
+                if (adc_sclk == 0) sck_enable_rise <= 1;
+                else               sck_enable_fall <= 1;
             end else begin
                 clk_cnt <= clk_cnt + 1;
             end
         end
     end
 
-    // =============================================================
-    // 2. SPI Transaction FSM (Reference: tmp.v)
-    // =============================================================
-    localparam S_IDLE  = 2'd0;
+    // === AD7908 SPI FSM (identical sequencing as reference) ===
+    localparam S_IDLE = 2'd0;
     localparam S_TRANS = 2'd1;
-    localparam S_DONE  = 2'd2;
+    localparam S_DONE = 2'd2;
 
     reg [1:0] state;
     reg [4:0] bit_cnt;
@@ -58,62 +55,58 @@ module adc_interface (
     reg [2:0] prev_addr;
     reg [15:0] shift_in;
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            state        <= S_IDLE;
-            adc_cs_n     <= 1;
-            adc_din      <= 0;
-            bit_cnt      <= 0;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            adc_cs_n <= 1;
+            adc_din <= 0;
+            state <= S_IDLE;
+            bit_cnt <= 0;
             channel_addr <= 0;
-            prev_addr    <= 0;
-            shift_in     <= 0;
-            dial_value   <= 0;
-            cds_value    <= 0;
+            prev_addr <= 0;
+            shift_in <= 0;
+            dial_value <= 0;
+            cds_value <= 0;
         end else begin
             case (state)
                 S_IDLE: begin
                     adc_cs_n <= 1;
-                    if (sck_fall_en) begin
+                    if (sck_enable_fall) begin
+                        state <= S_TRANS;
                         adc_cs_n <= 0;
-                        bit_cnt  <= 0;
-                        state    <= S_TRANS;
+                        bit_cnt <= 0;
                     end
                 end
 
                 S_TRANS: begin
-                    if (sck_rise_en) begin
-                        // 1. Sample MISO (bits 1~16 valid)
+                    if (sck_enable_rise) begin
                         if (bit_cnt >= 1 && bit_cnt <= 16)
                             shift_in <= {shift_in[14:0], adc_data_in};
 
-                        // 2. Drive MOSI based on control word
                         case (bit_cnt)
-                            0:  adc_din <= 1'b1;                 // WRITE
-                            1:  adc_din <= 1'b0;                 // SEQ
-                            2:  adc_din <= 1'b0;                 // Don't care
-                            3:  adc_din <= channel_addr[2];      // ADD2
-                            4:  adc_din <= channel_addr[1];      // ADD1
-                            5:  adc_din <= channel_addr[0];      // ADD0
-                            6:  adc_din <= 1'b1;                 // PM1
-                            7:  adc_din <= 1'b1;                 // PM0
-                            8:  adc_din <= 1'b0;                 // SHADOW
-                            9:  adc_din <= 1'b0;                 // WEAK
-                            10: adc_din <= 1'b1;                 // RANGE
-                            11: adc_din <= 1'b1;                 // CODING
+                            0:  adc_din <= 1'b1;
+                            1:  adc_din <= 1'b0;
+                            2:  adc_din <= 1'b0;
+                            3:  adc_din <= channel_addr[2];
+                            4:  adc_din <= channel_addr[1];
+                            5:  adc_din <= channel_addr[0];
+                            6:  adc_din <= 1'b1;
+                            7:  adc_din <= 1'b1;
+                            8:  adc_din <= 1'b0;
+                            9:  adc_din <= 1'b0;
+                            10: adc_din <= 1'b1;
+                            11: adc_din <= 1'b1;
                             default: adc_din <= 1'b0;
                         endcase
 
-                        // 3. Progress counter
                         bit_cnt <= bit_cnt + 1;
                         if (bit_cnt == 16) begin
-                            state    <= S_DONE;
+                            state <= S_DONE;
                             adc_cs_n <= 1;
                         end
                     end
                 end
 
                 S_DONE: begin
-                    // Store data captured during previous address phase
                     if (prev_addr == 0)      dial_value <= shift_in[12:5];
                     else if (prev_addr == 1) cds_value  <= shift_in[12:5];
 
