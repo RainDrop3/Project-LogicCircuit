@@ -5,6 +5,8 @@
 //   1. Port names match 'adc_interface' (Code B)
 //   2. Reset logic changed to Active High (matches Code A's success)
 //   3. Data slicing fixed to [11:4] (matches Code A's timing fix)
+//   4. [Fix] MOSI timing adjusted to update on Falling Edge (stable for Rising Edge sample)
+//   5. [Fix] Configuration bits matched to adc.v (Bits 2 and 9 set to 1)
 // =======================================================================================
 
 module adc_interface (
@@ -73,7 +75,7 @@ module adc_interface (
         if (rst) begin
             state        <= S_IDLE;
             adc_cs_n     <= 1;
-            adc_din      <= 0;
+            adc_din      <= 1; // Default High
             bit_cnt      <= 0;
             channel_addr <= 0;
             prev_addr    <= 0;
@@ -87,40 +89,41 @@ module adc_interface (
                     if (sck_fall_en) begin // Falling Edge Start
                         adc_cs_n <= 0;
                         bit_cnt  <= 0;
+                        adc_din  <= 1'b1; // [Fix] Bit 0 (Write=1) setup
                         state    <= S_TRANS;
                     end
                 end
 
                 S_TRANS: begin
-                    if (sck_rise_en) begin // Rising Edge Action
-                        // 1. Read MISO (adc_data_in)
+                    // 1. Read MISO (adc_data_in) on Rising Edge
+                    if (sck_rise_en) begin 
                         // [로직 적용] Code A와 동일하게 1~16비트 구간 샘플링
-                        if (bit_cnt >= 1 && bit_cnt <= 16) begin
-                            shift_in <= {shift_in[14:0], adc_data_in};
-                        end
+                        shift_in <= {shift_in[14:0], adc_data_in};
+                    end
 
-                        // 2. Write MOSI (adc_din)
-                        case (bit_cnt)
-                            0:  adc_din <= 1'b1;            // WRITE
-                            1:  adc_din <= 1'b0;            // SEQ
-                            2:  adc_din <= 1'b0;            // Don't Care
-                            3:  adc_din <= channel_addr[2]; // ADD2
-                            4:  adc_din <= channel_addr[1]; // ADD1
-                            5:  adc_din <= channel_addr[0]; // ADD0
-                            6:  adc_din <= 1'b1;            // PM1
-                            7:  adc_din <= 1'b1;            // PM0
-                            8:  adc_din <= 1'b0;            // SHADOW
-                            9:  adc_din <= 1'b0;            // WEAK
-                            10: adc_din <= 1'b1;            // RANGE
-                            11: adc_din <= 1'b1;            // CODING
-                            default: adc_din <= 1'b0;
-                        endcase
-
-                        // 3. Count
+                    // 2. Write MOSI (adc_din) on Falling Edge for NEXT bit
+                    if (sck_fall_en) begin
                         bit_cnt <= bit_cnt + 1;
-                        if (bit_cnt == 16) begin
+                        
+                        if (bit_cnt == 15) begin // Finished 16 bits (0~15)
                             state    <= S_DONE;
                             adc_cs_n <= 1;
+                        end else begin
+                            // Update MOSI for bit_cnt + 1
+                            case (bit_cnt + 1)
+                                1:  adc_din <= 1'b0;            // SEQ
+                                2:  adc_din <= 1'b1;            // [Fix] Don't Care (was 0) -> Matches adc.v
+                                3:  adc_din <= channel_addr[2]; // ADD2
+                                4:  adc_din <= channel_addr[1]; // ADD1
+                                5:  adc_din <= channel_addr[0]; // ADD0
+                                6:  adc_din <= 1'b1;            // PM1
+                                7:  adc_din <= 1'b1;            // PM0
+                                8:  adc_din <= 1'b0;            // SHADOW
+                                9:  adc_din <= 1'b1;            // [Fix] Weak/Don't Care (was 0) -> Matches adc.v
+                                10: adc_din <= 1'b1;            // RANGE
+                                11: adc_din <= 1'b1;            // CODING
+                                default: adc_din <= 1'b1;       // Default 1
+                            endcase
                         end
                     end
                 end
