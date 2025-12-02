@@ -1,19 +1,20 @@
 // =======================================================================================
 // Module Name: phase1_puzzle2_dial
-// Description: Phase 2 금고 다이얼 퍼즐 (Full Display & 3s Limit Version)
-// Goal: 3초 안에 랜덤 위치 조준!
+// Description: Phase 2 금고 다이얼 퍼즐 (Keypad Steering Edition)
+// Goal: 키패드 1/2를 눌러 서보를 좌/우로 이동시키고, LED와 세그먼트가 일치할 때 Key 0으로 확정
 // Display: [ _ _ _ O _ _ _ _ ] (8자리 전체 사용)
 // Update:
-//   1. 제한 시간 5초 -> 3초 단축
-//   2. 7-Segment 전체(8자리)를 타겟 위치 표시용으로 사용 (타이머 표시 제거)
-//   3. 타겟 위치는 '0'(O), 나머지는 '_'(B)로 표시
+//   1. 아날로그 다이얼 입력 제거, Key1/Key2 홀드 기반 서보 제어
+//   2. 서보 각도를 8등분하여 LED 1~8을 해당 위치만 점등
+//   3. 한 라운드 성공/실패 과정을 5번 반복해야 퍼즐 클리어
 // =======================================================================================
 
 module phase1_puzzle2_dial (
     input wire clk,
     input wire rst_n,
     input wire enable,
-    input wire [7:0] adc_dial_val,  // 가변저항 입력 (8-bit from ADC)
+    input wire btn_left_hold,       // Keypad 1 (hold = move left)
+    input wire btn_right_hold,      // Keypad 2 (hold = move right)
     input wire btn_click,           // 확인 버튼 (Key 0)
     
     output reg [31:0] target_seg_data, // [Target Position Map]
@@ -26,10 +27,12 @@ module phase1_puzzle2_dial (
     // ==========================================
     // Parameters
     // ==========================================
-    // [수정] 제한 시간 3초로 단축
+    // [유지] 제한 시간 3초
     parameter TIME_LIMIT_SEC = 3;       
     parameter CLK_FREQ = 50_000_000;    
     parameter MAX_TICK = TIME_LIMIT_SEC * CLK_FREQ; 
+    parameter integer TOTAL_ROUNDS = 5;
+    parameter integer MOVE_INTERVAL = 250_000; // ~5ms per step at 50MHz
 
     // ==========================================
     // State & Signals
@@ -40,7 +43,11 @@ module phase1_puzzle2_dial (
 
     reg [1:0] state;
     reg [2:0] target_pos;   // 목표 위치 (0~7)
-    reg [2:0] current_pos;  // 현재 위치 (0~7)
+    reg [2:0] servo_zone;   // 현재 서보 위치 (0~7)
+    reg [2:0] round_count;  // 진행된 라운드 수
+    reg [18:0] move_cnt;    // 좌/우 이동 속도 제어
+    reg round_done;
+    reg round_success;
     
     reg [31:0] timer_cnt;   // 카운트다운 타이머 (내부 동작용)
     
@@ -53,71 +60,110 @@ module phase1_puzzle2_dial (
     // ==========================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            lfsr_reg <= 16'hACE1;
-            target_pos <= 0;
-            state <= S_INIT;
-            timer_cnt <= 0;
-            clear <= 0; fail <= 0;
+            lfsr_reg    <= 16'hACE1;
+            target_pos  <= 3'd0;
+            timer_cnt   <= 32'd0;
+            state       <= S_INIT;
+            round_count <= 3'd0;
+            clear       <= 1'b0;
+            fail        <= 1'b0;
         end else begin
             lfsr_reg <= {lfsr_reg[14:0], feedback};
-            clear <= 0; 
-            fail <= 0;
+            clear    <= 1'b0;
+            fail     <= 1'b0;
 
-            if (enable) begin
+            if (!enable) begin
+                state       <= S_INIT;
+                round_count <= 3'd0;
+            end else begin
                 case (state)
                     S_INIT: begin
-                        target_pos <= lfsr_reg[2:0]; 
-                        timer_cnt <= MAX_TICK;
-                        state <= S_PLAY;
+                        target_pos <= lfsr_reg[2:0];
+                        timer_cnt  <= MAX_TICK;
+                        state      <= S_PLAY;
                     end
-                    
+
                     S_PLAY: begin
-                        if (timer_cnt > 0) begin
-                            timer_cnt <= timer_cnt - 1;
-                            if (btn_click) begin
-                                if (current_pos == target_pos) begin
-                                    clear <= 1;
-                                    state <= S_DONE; 
-                                end else begin
-                                    fail <= 1; 
-                                    state <= S_INIT; 
-                                end
-                            end
+                        round_done    = 1'b0;
+                        round_success = 1'b0;
+
+                        if (timer_cnt == 0) begin
+                            round_done    = 1'b1;
+                            round_success = 1'b0;
+                        end else if (btn_click) begin
+                            round_done    = 1'b1;
+                            round_success = (servo_zone == target_pos);
                         end else begin
-                            // Time Over -> Fail & Restart
-                            fail <= 1;
-                            state <= S_INIT;
+                            timer_cnt <= timer_cnt - 1;
+                        end
+
+                        if (round_done) begin
+                            if (!round_success)
+                                fail <= 1'b1;
+
+                            if (round_count == TOTAL_ROUNDS-1) begin
+                                clear <= 1'b1;
+                                state <= S_DONE;
+                            end else begin
+                                round_count <= round_count + 1'b1;
+                                state <= S_INIT;
+                            end
                         end
                     end
-                    
+
                     S_DONE: begin
+                        // 유지: enable이 내려가면 상위 FSM이 초기화하면서 다시 시작
                     end
                 endcase
-            end else begin
-                state <= S_INIT;
             end
         end
     end
 
     // ==========================================
-    // Input Processing (ADC -> Position)
+    // Keypad Steering -> Servo Angle
+    // ==========================================
+    wire move_left  = btn_left_hold  && !btn_right_hold;
+    wire move_right = btn_right_hold && !btn_left_hold;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            servo_zone <= 3'd3;
+            move_cnt   <= 0;
+        end else begin
+            if (!enable || state == S_INIT) begin
+                servo_zone <= 3'd3;
+                move_cnt   <= 0;
+            end else if (state == S_PLAY) begin
+                if (move_left || move_right) begin
+                    if (move_cnt >= MOVE_INTERVAL) begin
+                        move_cnt <= 0;
+                        if (move_left && servo_zone > 0)
+                            servo_zone <= servo_zone - 1'b1;
+                        else if (move_right && servo_zone < 3'd7)
+                            servo_zone <= servo_zone + 1'b1;
+                    end else begin
+                        move_cnt <= move_cnt + 1'b1;
+                    end
+                end else begin
+                    move_cnt <= 0;
+                end
+            end else begin
+                move_cnt <= 0;
+            end
+        end
+    end
+
+    // ==========================================
+    // Input Processing (Servo -> LED / Angle)
     // ==========================================
     always @(*) begin
-        current_pos = adc_dial_val[7:5]; // Use upper 3 bits to map 8 zones
-        
-        case (current_pos)
-            3'd0: cursor_led = 8'b00000001;
-            3'd1: cursor_led = 8'b00000010;
-            3'd2: cursor_led = 8'b00000100;
-            3'd3: cursor_led = 8'b00001000;
-            3'd4: cursor_led = 8'b00010000;
-            3'd5: cursor_led = 8'b00100000;
-            3'd6: cursor_led = 8'b01000000;
-            3'd7: cursor_led = 8'b10000000;
-            default: cursor_led = 8'b00000000;
-        endcase
-        
-        servo_angle = current_pos * 8'd25; 
+        if (!enable) begin
+            cursor_led = 8'b0000_0000;
+            servo_angle = 8'd90; // 중앙 유지
+        end else begin
+            cursor_led = 8'b0000_0001 << servo_zone;
+            servo_angle = servo_zone * 8'd25;
+        end
     end
 
     // ==========================================

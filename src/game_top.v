@@ -56,6 +56,11 @@ module game_top (
     wire btn_event_action;
     assign btn_event_action = key_pulse && (key_val == 4'd11);
 
+    // Keypad Hold Inputs (direct parallel lines)
+    wire btn_left_hold, btn_right_hold;
+    assign btn_left_hold  = keypad_in[1];
+    assign btn_right_hold = keypad_in[2];
+
     // --- Driver Outputs ---
     wire [7:0] dip_sync;       
     wire [7:0] adc_dial_val;   
@@ -104,7 +109,9 @@ module game_top (
     // --- Sub-module Output Wires ---
     wire [7:0] p1_led, p2_led, p3_led;
     wire [31:0] p1_seg, p2_seg, p3_seg, p4_seg;
-    wire [7:0] p2_servo, ev1_servo, ev2_servo;
+    wire [7:0] p2_servo;
+    wire [7:0] ev1_servo;
+    wire [7:0] ev2_servo;
     wire p4_motor_pulse; 
     wire ev1_piezo;
     wire [2:0] ev2_rgb;
@@ -178,7 +185,8 @@ module game_top (
     phase1_puzzle2_dial u_puzzle2 (
         .clk(clk), .rst_n(~sys_rst), 
         .enable(current_state == 3'd2),
-        .adc_dial_val(adc_dial_val), 
+        .btn_left_hold(btn_left_hold),
+        .btn_right_hold(btn_right_hold),
         
         // [유지] Phase 2는 Key 0 사용
         .btn_click(btn_main_action),     
@@ -218,15 +226,12 @@ module game_top (
     // 7. Events
     // =================================================================
 
-    event1_overload u_event1 (
-        .clk(clk), .rst_n(~sys_rst), 
-        .event_start(auto_trig_ev1), 
-        .cds_value(adc_cds_val),
-        .servo_angle(ev1_servo), .piezo_warn(ev1_piezo),
-        .event_success(ev1_success), 
-        .event_fail(ev1_fail), 
-        .event_active(ev1_active)
-    );
+    // Event 1 Disabled
+    assign ev1_active  = 1'b0;
+    assign ev1_success = 1'b0;
+    assign ev1_fail    = 1'b0;
+    assign ev1_servo   = 8'd90;
+    assign ev1_piezo   = 1'b0;
 
     event2_danger u_event2 (
         .clk(clk), .rst_n(~sys_rst), 
